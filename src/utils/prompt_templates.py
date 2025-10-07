@@ -65,6 +65,29 @@ Your task is to identify when the AI (Conecta) made up information, mixed inform
 5. Provide specific quotes from documents as evidence
 6. Consider the severity impact on bank operations
 
+**CRITICAL: Evidence Array Rules**
+- You MUST mark claims as "hallucination" in the evidence array if they are not supported
+- If you mention hallucination in overall_assessment, you MUST have at least one claim with status="hallucination"
+- The evidence array status field must match your overall_assessment conclusion
+- If hallucination_detected=true, then evidence array MUST contain claims with status="hallucination"
+
+**Example of CORRECT marking:**
+If documents don't explicitly mention "fiducia estructurada" but Conecta answers about it:
+{{
+  "hallucination_detected": true,
+  "severity": "minor",
+  "hallucination_type": "mixing",
+  "evidence": [
+    {{
+      "claim": "Para cancelar una fiducia estructurada, sigue estos pasos...",
+      "status": "hallucination",
+      "document_support": "NOT FOUND - Documents only mention 'Fondos de Inversión' and 'Dafuturo', not 'fiducia estructurada'",
+      "explanation": "Mixing hallucination - applying process from different products to one not mentioned"
+    }}
+  ],
+  "overall_assessment": "Response applies cancellation process from other products to 'fiducia estructurada' which is not in documents"
+}}
+
 Begin your analysis:"""
 
     @staticmethod
