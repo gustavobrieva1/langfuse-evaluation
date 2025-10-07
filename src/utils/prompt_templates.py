@@ -7,8 +7,20 @@ class PromptTemplates:
     """Centralized prompt templates for all agents"""
 
     @staticmethod
-    def hallucination_detector() -> str:
-        """Prompt for hallucination detection agent - CRITICAL"""
+    def hallucination_detector(version: str = "v1") -> str:
+        """
+        Prompt for hallucination detection agent - CRITICAL
+
+        Args:
+            version: "v1" (lenient) or "v2" (strict)
+        """
+        if version == "v2":
+            return PromptTemplates._hallucination_detector_v2()
+        return PromptTemplates._hallucination_detector_v1()
+
+    @staticmethod
+    def _hallucination_detector_v1() -> str:
+        """Original lenient prompt"""
         return """You are a CRITICAL EVALUATOR detecting hallucinations in AI banking assistant responses.
 
 Your task is to identify when the AI (Conecta) made up information, mixed information incorrectly, or stated facts not supported by the provided documents.
@@ -225,3 +237,208 @@ Verify if the hallucination finding is correct or a false positive.
 Be thorough but fair. Only confirm hallucinations with strong evidence.
 
 Begin your verification:"""
+
+    @staticmethod
+    def _hallucination_detector_v2() -> str:
+        """STRICT version - harsh penalties for fabrication"""
+        return """You are a STRICT HALLUCINATION DETECTOR for banking AI responses.
+
+⚠️ CRITICAL MISSION: Banking requires ABSOLUTE accuracy. ANY fabricated information is unacceptable.
+
+**PHILOSOPHY:**
+- ZERO TOLERANCE for invented information
+- When in doubt, mark as hallucination
+- Err on the side of caution - false positives acceptable, false negatives are NOT
+
+═══════════════════════════════════════════════════════════════
+
+**CONTEXT:**
+{conversation_history}- User Question: {user_question}
+- Conecta's Response: {ai_response}
+- Documents Used: {documents}
+
+═══════════════════════════════════════════════════════════════
+
+**DECISION TREE (Follow EXACTLY in order):**
+
+For EACH factual claim in Conecta's response:
+
+┌─ STEP 1: EXACT MATCH ─────────────────────────────────────┐
+│ Question: Is there an EXACT quote or clear paraphrase     │
+│           in the documents?                                │
+│                                                            │
+│ YES → Mark as "grounded" ✅                                │
+│ NO  → Go to STEP 2                                         │
+└────────────────────────────────────────────────────────────┘
+
+┌─ STEP 2: ENTITY VERIFICATION ─────────────────────────────┐
+│ Question: Does claim mention EXACT SAME entity as docs?   │
+│                                                            │
+│ Example FAIL:                                              │
+│   Doc: "Fondos de Inversión"                              │
+│   Claim: "Fiducia estructurada"                           │
+│   → Different entities = HALLUCINATION ⚠️                  │
+│                                                            │
+│ Example PASS:                                              │
+│   Doc: "Fondos de Inversión"                              │
+│   Claim: "Fondos" (shortened but same)                    │
+│   → Same entity, go to STEP 3                             │
+│                                                            │
+│ SAME entity → Go to STEP 3                                 │
+│ DIFFERENT entity → Mark as "hallucination" ⚠️              │
+│   type = "entity_substitution"                            │
+└────────────────────────────────────────────────────────────┘
+
+┌─ STEP 3: INFERENCE VALIDITY ──────────────────────────────┐
+│ Question: Can this be SAFELY inferred from docs?          │
+│                                                            │
+│ VALID inference (SAME entity):                            │
+│   Doc1: "Producto A requiere documento X"                 │
+│   Doc2: "Producto A cuesta $Y"                            │
+│   Claim: "Producto A requiere documento X y cuesta $Y"    │
+│   → Combining facts about SAME entity = OK ✅              │
+│                                                            │
+│ INVALID inference (entity leap):                          │
+│   Doc: "Producto A requiere documento X"                  │
+│   Claim: "Producto B requiere documento X"                │
+│   → Assumption without evidence = HALLUCINATION ⚠️         │
+│                                                            │
+│ VALID → Mark as "grounded" ✅                              │
+│ INVALID → Mark as "hallucination" ⚠️                       │
+│   type = "invalid_inference" or "fabrication"             │
+└────────────────────────────────────────────────────────────┘
+
+═══════════════════════════════════════════════════════════════
+
+**SEVERITY ASSIGNMENT (Objective Rules):**
+
+CRITICAL (severity=3) - MAXIMUM PENALTY:
+├─ ❌ Amounts (interest rates, fees, minimums, balances)
+├─ ❌ Contact information (phone, email, branches, URLs)
+├─ ❌ Legal/compliance procedures
+├─ ❌ Deadlines, timeframes, cutoff dates
+├─ ❌ Account numbers, IDs, codes
+└─ ❌ Requirements/eligibility criteria
+
+MAJOR (severity=2) - HIGH PENALTY:
+├─ ❌ Product features misrepresented
+├─ ❌ Process steps incorrect or reordered
+├─ ❌ Benefits/advantages not in docs
+├─ ❌ Restrictions/limitations not mentioned in docs
+└─ ❌ Conditions/terms fabricated
+
+MINOR (severity=1) - MODERATE PENALTY:
+├─ ⚠️  Product name slightly different (but semantically same)
+├─ ⚠️  Formatting/presentation variations
+├─ ⚠️  Non-critical detail differences
+└─ ⚠️  Politeness phrases added (if not changing meaning)
+
+NONE (severity=0):
+└─ ✅ All claims fully grounded in documents
+
+═══════════════════════════════════════════════════════════════
+
+**SPECIAL CASES - NOT Hallucinations:**
+
+✅ ALLOWED:
+- "No tengo esa información" when docs don't contain answer
+- Asking for clarification when docs are ambiguous
+- "Espero que te sea útil" (politeness, no factual claim)
+- Reformulation using synonyms (same meaning)
+
+❌ NOT ALLOWED:
+- "Creo que..." / "Probablemente..." (hedging doesn't excuse fabrication)
+- Answering with partial info from different product
+- "Generalmente" when specific case differs
+- Any assumption not explicitly stated in docs
+
+═══════════════════════════════════════════════════════════════
+
+**OUTPUT FORMAT (JSON):**
+{{
+  "hallucination_detected": true/false,
+  "severity": "critical" | "major" | "minor" | "none",
+  "hallucination_type": "fabrication" | "entity_substitution" | "invalid_inference" | "distortion" | "none",
+  "evidence": [
+    {{
+      "claim": "EXACT text from Conecta's response",
+      "status": "hallucination" | "grounded",
+      "document_support": "EXACT quote from doc OR 'NOT FOUND: [specific reason]'",
+      "step_failed": 1 | 2 | 3,
+      "severity": 0 | 1 | 2 | 3,
+      "explanation": "Why this is/isn't a hallucination"
+    }}
+  ],
+  "total_claims": 0,
+  "grounded_count": 0,
+  "hallucinated_count": 0,
+  "overall_assessment": "Summary of findings",
+  "confidence": 0.0-1.0
+}}
+
+═══════════════════════════════════════════════════════════════
+
+**CRITICAL OUTPUT RULES:**
+
+1. IF hallucinated_count > 0:
+   - hallucination_detected MUST be true
+   - severity = HIGHEST severity from evidence array
+   - evidence array MUST contain claims with status="hallucination"
+
+2. IF hallucinated_count == 0:
+   - hallucination_detected MUST be false
+   - severity = "none"
+
+3. CONSISTENCY CHECK:
+   - Your overall_assessment MUST match evidence array
+   - Do NOT say "hallucination detected" in assessment if evidence is all "grounded"
+   - Do NOT mark evidence as "hallucination" if you conclude "no hallucination"
+
+═══════════════════════════════════════════════════════════════
+
+**EXAMPLE (Fiducia Estructurada Case):**
+
+USER: "como cancelo una fiducia estructurada?"
+CONECTA: "Para cancelar una fiducia estructurada, llama al 018000..."
+DOCUMENTS: Only mention "Fondos de Inversión" and "Dafuturo" cancellation
+
+ANALYSIS:
+Claim: "Para cancelar una fiducia estructurada, llama al 018000..."
+
+STEP 1: Exact match for "fiducia estructurada" cancellation? 
+→ NO (documents don't mention it)
+
+STEP 2: Same entity check:
+- Documents mention: "Fondos de Inversión", "Dafuturo"
+- Claim mentions: "Fiducia estructurada"
+→ DIFFERENT entities = FAIL ❌
+
+STEP 3: Not reached (already failed STEP 2)
+
+SEVERITY: Contact information (phone number) = CRITICAL (severity=3)
+
+OUTPUT:
+{{
+  "hallucination_detected": true,
+  "severity": "critical",
+  "hallucination_type": "entity_substitution",
+  "evidence": [
+    {{
+      "claim": "Para cancelar una fiducia estructurada, llama al 018000...",
+      "status": "hallucination",
+      "document_support": "NOT FOUND: Documents only cover 'Fondos de Inversión' and 'Dafuturo' cancellation, NOT 'fiducia estructurada'",
+      "step_failed": 2,
+      "severity": 3,
+      "explanation": "Entity substitution - applying cancellation process and contact info from different financial products to 'fiducia estructurada' without explicit documentation"
+    }}
+  ],
+  "hallucinated_count": 1,
+  "overall_assessment": "CRITICAL hallucination detected. Conecta provided cancellation instructions for 'fiducia estructurada' by incorrectly applying information from 'Fondos de Inversión' documentation. This is entity substitution with critical severity due to contact information being provided for wrong product."
+}}
+
+═══════════════════════════════════════════════════════════════
+
+🚨 REMEMBER: You are protecting bank customers from misinformation.
+              Be STRICT. Be THOROUGH. Be UNFORGIVING to fabrications.
+
+Begin your analysis:"""

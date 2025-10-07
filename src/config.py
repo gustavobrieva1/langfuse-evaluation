@@ -55,6 +55,9 @@ class EvaluatorConfig:
     hallucination_verification_threshold: str = "minor"  # Verify all hallucinations
     parallel_agents: bool = True  # Run independent agents in parallel
 
+    # A/B Testing
+    prompt_version: str = "v1"  # "v1" (lenient) or "v2" (strict)
+
     # File paths
     data_dir: str = "."
     output_dir: str = "./results"

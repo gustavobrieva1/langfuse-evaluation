@@ -22,8 +22,9 @@ class HallucinationDetector(BaseAgent):
     - Reputation damage
     """
 
-    def __init__(self, llm_provider: BaseLLMProvider):
+    def __init__(self, llm_provider: BaseLLMProvider, prompt_version: str = "v1"):
         super().__init__(llm_provider, "HallucinationDetector")
+        self.prompt_version = prompt_version
 
     def get_prompt(
         self,
@@ -44,7 +45,7 @@ class HallucinationDetector(BaseAgent):
         Returns:
             Formatted prompt
         """
-        template = PromptTemplates.hallucination_detector()
+        template = PromptTemplates.hallucination_detector(version=self.prompt_version)
 
         # Build conversation history context
         conversation_history = ""

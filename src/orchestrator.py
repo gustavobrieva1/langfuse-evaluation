@@ -108,7 +108,10 @@ class EvaluationOrchestrator:
 
         # Initialize agents
         self.agents = {
-            'hallucination': HallucinationDetector(providers['hallucination_detector']),
+            'hallucination': HallucinationDetector(
+                providers['hallucination_detector'],
+                prompt_version=config.prompt_version
+            ),
             'document_relevance': DocumentRelevanceAgent(providers['document_relevance']),
             'completeness': CompletenessChecker(providers['completeness_checker']),
             'escalation': EscalationValidator(providers['escalation_validator']),
