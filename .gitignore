@@ -29,9 +29,6 @@ env/
 .ipynb_checkpoints
 *.ipynb_checkpoints/
 
-# Notebook files (including Colab)
-*.ipynb
-
 # Environment variables
 .env
 .env.local
